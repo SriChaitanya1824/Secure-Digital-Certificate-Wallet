@@ -1,0 +1,78 @@
+version: '3.8'
+
+services:
+  postgresql:
+    image: postgres:15-alpine
+    container_name: secure-wallet-db
+    environment:
+      POSTGRES_DB: secure_wallet
+      POSTGRES_USER: wallet_user
+      POSTGRES_PASSWORD: secure_password
+      POSTGRES_INITDB_ARGS: "-c max_connections=200"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wallet_user -d secure_wallet"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - secure-wallet-network
+
+  issuer-backend:
+    build:
+      context: ./issuer-backend
+      dockerfile: Dockerfile
+    container_name: issuer-backend
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgresql:5432/secure_wallet
+      SPRING_DATASOURCE_USERNAME: wallet_user
+      SPRING_DATASOURCE_PASSWORD: secure_password
+      JWT_SECRET: your-super-secret-key-that-is-at-least-32-characters-long-for-development
+      SERVER_PORT: 8081
+    ports:
+      - "8081:8081"
+    depends_on:
+      postgresql:
+        condition: service_healthy
+    networks:
+      - secure-wallet-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  verifier-backend:
+    build:
+      context: ./verifier-backend
+      dockerfile: Dockerfile
+    container_name: verifier-backend
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgresql:5432/secure_wallet
+      SPRING_DATASOURCE_USERNAME: wallet_user
+      SPRING_DATASOURCE_PASSWORD: secure_password
+      JWT_SECRET: your-super-secret-key-that-is-at-least-32-characters-long-for-development
+      SERVER_PORT: 8082
+    ports:
+      - "8082:8082"
+    depends_on:
+      postgresql:
+        condition: service_healthy
+    networks:
+      - secure-wallet-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8082/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  secure-wallet-network:
+    driver: bridge
